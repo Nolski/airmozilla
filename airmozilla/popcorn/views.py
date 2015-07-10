@@ -1,4 +1,5 @@
 import requests
+import re
 from jsonview.decorators import json_view
 
 from django import http
@@ -19,19 +20,7 @@ def add_cors_header(value):
         return inner
     return decorator
 
-
-@add_cors_header('*')
-@json_view
-def event_meta_data(request):
-    slug = request.GET.get('slug')
-    event = get_object_or_404(Event, slug=slug)
-
-    image = event.picture and event.picture.file or event.placeholder_img
-    geometry = '160x90'
-    crop = 'center'
-
-    thumb = thumbnail(image, geometry, crop=crop)
-
+def get_video_url(event):
     if event.template and 'vid.ly' in event.template.name.lower():
         tag = event.template_environment['tag']
 
@@ -51,11 +40,34 @@ def event_meta_data(request):
 
     assert response.status_code == 302, response.status_code
 
+    return response.headers['location']
+
+
+def get_thumbnail(event):
+    image = event.picture and event.picture.file or event.placeholder_img
+    geometry = '160x90'
+    crop = 'center'
+
+    return thumbnail(image, geometry, crop=crop)
+
+
+@add_cors_header('*')
+@json_view
+def event_meta_data(request):
+    slug = request.GET.get('slug')
+    event = get_object_or_404(Event, slug=slug)
+    pattern = re.compile('(.+)\?')
+
+    matches = pattern.match(get_video_url(event))
+    video_url = matches.group()[:-1]
+
+    thumb = get_thumbnail(event)
+
     return {
         'title': event.title,
         'description': event.short_description or event.description,
         'preview_img': thumb.url,
-        'video_url': response.headers['location'],
+        'video_url': video_url,
     }
 
 
